@@ -8,6 +8,8 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
@@ -23,6 +25,8 @@ namespace Microsoft.AspNetCore.OData.Tests.Deltas
 {
     public class DeltaTest
     {
+        private readonly string testNameSpace = "Microsoft.AspNetCore.OData.Tests.Deltas";
+
         [Fact]
         public void Ctor_ThrowsArgumentNull_StructuralType()
         {
@@ -34,7 +38,7 @@ namespace Microsoft.AspNetCore.OData.Tests.Deltas
         {
             ExceptionAssert.Throws<InvalidOperationException>(
                 () => new Delta<Derived>(typeof(AnotherDerived)),
-                "The actual entity type 'Microsoft.AspNetCore.OData.Tests.Deltas.DeltaTest+AnotherDerived' is not assignable to the expected type 'Microsoft.AspNetCore.OData.Tests.Deltas.DeltaTest+Derived'.");
+                $"The actual entity type '{testNameSpace}.DeltaTest+AnotherDerived' is not assignable to the expected type '{testNameSpace}.DeltaTest+Derived'.");
         }
 
         [Fact]
@@ -66,6 +70,14 @@ namespace Microsoft.AspNetCore.OData.Tests.Deltas
             // Arrange & Act
             Delta<Base> delta = new Delta<Base>();
             ExceptionAssert.ThrowsArgumentNull(() => delta.TryGetPropertyValue(null, out _), "name");
+        }
+
+        [Fact]
+        public void TryGetNestedPropertyValue_ThrowsArgumentNull_original()
+        {
+            // Arrange & Act
+            Delta<Base> delta = new Delta<Base>();
+            ExceptionAssert.ThrowsArgumentNull(() => delta.TryGetNestedPropertyValue(null, out _), "name");
         }
 
         [Fact]
@@ -136,7 +148,7 @@ namespace Microsoft.AspNetCore.OData.Tests.Deltas
 
             // Assert
             ExceptionAssert.Throws<InvalidOperationException>(test,
-                "The dynamic dictionary property 'NonSetDynamics' of type 'Microsoft.AspNetCore.OData.Tests.Deltas.DeltaTest+AddressWithDynamicContainer' cannot be set. The dynamic property dictionary must have a setter.");
+                $"The dynamic dictionary property 'NonSetDynamics' of type '{testNameSpace}.DeltaTest+AddressWithDynamicContainer' cannot be set. The dynamic property dictionary must have a setter.");
         }
 
         [Fact]
@@ -171,12 +183,14 @@ namespace Microsoft.AspNetCore.OData.Tests.Deltas
             dynamic deltaCustomer = new Delta<CustomerEntity>();
             IDelta ideltaCustomer = deltaCustomer as IDelta;
 
-            AddressEntity Address = new AddressEntity();
-            Address.ID = 42;
-            Address.StreetAddress = "23213 NE 15th Ct";
-            Address.City = "Sammamish";
-            Address.State = "WA";
-            Address.ZipCode = 98074;
+            AddressEntity Address = new AddressEntity
+            {
+                ID = 42,
+                StreetAddress = "23213 NE 15th Ct",
+                City = "Sammamish",
+                State = "WA",
+                ZipCode = 98074
+            };
 
             // modify in the way we expect the formatter too.
             ideltaCustomer.TrySetPropertyValue("Address", Address);
@@ -214,9 +228,9 @@ namespace Microsoft.AspNetCore.OData.Tests.Deltas
             Assert.Equal("Sammamish", deltaAddress.City);
 
             // read the property back
-            Assert.True(ideltaAddress.TryGetPropertyValue("City", out var city));
+            Assert.True(ideltaAddress.TryGetPropertyValue("City", out object city));
             Assert.Equal("Sammamish", city);
-            Assert.True(ideltaAddress.TryGetPropertyValue("StreetAddress", out var streetAddress));
+            Assert.True(ideltaAddress.TryGetPropertyValue("StreetAddress", out object streetAddress));
             Assert.Equal("23213 NE 15th Ct", streetAddress);
 
             // modify the nested property
@@ -225,11 +239,69 @@ namespace Microsoft.AspNetCore.OData.Tests.Deltas
             Assert.Equal("Address", ideltaCustomer.GetChangedPropertyNames().Single());
             Assert.Equal(3, ideltaCustomer.GetUnchangedPropertyNames().Count());
 
-            // read the nested property back
-            Assert.True(ideltaCustomer.TryGetPropertyValue("Address", out dynamic nestedAddress));
-            Assert.IsAssignableFrom<AddressEntity>(nestedAddress);
-            Assert.Equal("Sammamish", nestedAddress.City);
-            Assert.Equal("23213 NE 15th Ct", nestedAddress.StreetAddress);
+            // read the nested property back using legacy API
+            Assert.True(ideltaCustomer.TryGetPropertyValue("Address", out dynamic deltaAddressEntity));
+            Assert.IsAssignableFrom<AddressEntity>(deltaAddressEntity);
+            AddressEntity addressEntity = deltaAddressEntity as AddressEntity;
+            Assert.Equal("23213 NE 15th Ct", addressEntity.StreetAddress);
+            Assert.Equal("Sammamish", addressEntity.City);
+
+            // read the nested property back using nested API
+            Assert.True(deltaCustomer.TryGetNestedPropertyValue("Address", out dynamic deltaNestedAddress));
+            Assert.IsAssignableFrom<IDelta>(deltaNestedAddress);
+            IDelta ideltaNestedAddress = deltaNestedAddress as IDelta;
+            Assert.Equal(3, ideltaNestedAddress.GetUnchangedPropertyNames().Count());
+            mods = ideltaNestedAddress.GetChangedPropertyNames().ToArray();
+            Assert.Equal(2, mods.Length);
+            Assert.Contains("StreetAddress", mods);
+            Assert.Contains("City", mods);
+            Assert.Equal("23213 NE 15th Ct", deltaNestedAddress.StreetAddress);
+            Assert.Equal("Sammamish", deltaNestedAddress.City);
+
+            // read the property back
+            Assert.True(ideltaNestedAddress.TryGetPropertyValue("City", out object nestedCity));
+            Assert.Equal("Sammamish", nestedCity);
+            Assert.True(ideltaNestedAddress.TryGetPropertyValue("StreetAddress", out object nestedStreetAddress));
+            Assert.Equal("23213 NE 15th Ct", nestedStreetAddress);
+
+            // read the type
+            Assert.True(ideltaCustomer.TryGetPropertyType("Address", out Type nestedType));
+            Assert.Equal(typeof(AddressEntity), nestedType);
+
+            // read the instance
+            dynamic nestedInstance = deltaNestedAddress.GetInstance();
+            Assert.IsAssignableFrom<AddressEntity>(nestedInstance);
+            Assert.Equal("Sammamish", nestedInstance.City);
+            Assert.Equal("23213 NE 15th Ct", nestedInstance.StreetAddress);
+        }
+
+        [Fact]
+        public void CannotGetChangedNestedDeltaPropertyNames()
+        {
+            dynamic deltaCustomer = new Delta<CustomerEntity>();
+            IDelta ideltaCustomer = deltaCustomer as IDelta;
+
+            AddressEntity address = new AddressEntity();
+
+            // modify
+            address.City = "Sammamish";
+            address.StreetAddress = "23213 NE 15th Ct";
+
+            // modify the nested property
+            ideltaCustomer.TrySetPropertyValue("Address", address);
+            Assert.Single(ideltaCustomer.GetChangedPropertyNames());
+            Assert.Equal("Address", ideltaCustomer.GetChangedPropertyNames().Single());
+            Assert.Equal(3, ideltaCustomer.GetUnchangedPropertyNames().Count());
+
+            // read the not nested property back using legacy API
+            Assert.True(ideltaCustomer.TryGetPropertyValue("Address", out dynamic deltaAddressEntity));
+            Assert.IsAssignableFrom<AddressEntity>(deltaAddressEntity);
+            AddressEntity addressEntity = deltaAddressEntity as AddressEntity;
+            Assert.Equal("23213 NE 15th Ct", addressEntity.StreetAddress);
+            Assert.Equal("Sammamish", addressEntity.City);
+
+            // read the not nested property back using nested API
+            Assert.False(deltaCustomer.TryGetNestedPropertyValue("Address", out dynamic deltaNestedAddress));
         }
 
         [Fact]
@@ -458,6 +530,37 @@ namespace Microsoft.AspNetCore.OData.Tests.Deltas
             // changed
             Assert.Equal("Sammamish", originalCustomer.Address.City);
             Assert.Equal("23213 NE 15th Ct", originalCustomer.Address.StreetAddress);
+        }
+
+        [Fact]
+        public void TestDelta_IgnoresUnmapped()
+        {
+            //Arrange
+            var delta = new Delta<NewCustomerUnmapped>();
+
+            //Act
+            var properties = delta.GetUnchangedPropertyNames().ToList();
+
+            //Assert
+            Assert.Equal(3, properties.Count);
+            Assert.Equal("Id", properties.First());
+            Assert.Equal("City", properties[1]);
+            Assert.Equal("State", properties[2]);
+        }
+
+        [Fact]
+        public void TestDelta_IgnoredMember()
+        {
+            //Arrange
+            var delta = new Delta<NewCustomerDataContract>();
+
+            //Act
+            var properties = delta.GetUnchangedPropertyNames().ToList();
+
+            //Assert
+            Assert.Equal(2, properties.Count);
+            Assert.Equal("Name", properties[0]);
+            Assert.Equal("Street", properties[1]);
         }
 
         [Fact]
@@ -722,7 +825,7 @@ namespace Microsoft.AspNetCore.OData.Tests.Deltas
             // Act & Assert
             ExceptionAssert.Throws<SerializationException>(
                 () => delta.CollectionPropertyWithoutSetAndNullValue = new[] { "1" },
-                "The property 'CollectionPropertyWithoutSetAndNullValue' on type 'Microsoft.AspNetCore.OData.Tests.Deltas.DeltaTest+InvalidD" +
+                $"The property 'CollectionPropertyWithoutSetAndNullValue' on type '{testNameSpace}.DeltaTest+InvalidD" +
                 "eltaModel' returned a null value. The input stream contains collection items which cannot be added if " +
                 "the instance is null.");
         }
@@ -736,8 +839,8 @@ namespace Microsoft.AspNetCore.OData.Tests.Deltas
             // Act & Assert
             ExceptionAssert.Throws<SerializationException>(
                 () => delta.CollectionPropertyWithoutSetAndClear = new[] { "1" },
-                "The type 'System.Int32[]' of the property 'CollectionPropertyWithoutSetAndClear' on type 'Microsoft." +
-                "AspNetCore.OData.Tests.Deltas.DeltaTest+InvalidDeltaModel' does not have a Clear method. Consider using a collection type" +
+                "The type 'System.Int32[]' of the property 'CollectionPropertyWithoutSetAndClear' on type " +
+                $"'{testNameSpace}.DeltaTest+InvalidDeltaModel' does not have a Clear method. Consider using a collection type" +
                 " that does have a Clear method, such as IList<T> or ICollection<T>.");
         }
 
@@ -752,7 +855,7 @@ namespace Microsoft.AspNetCore.OData.Tests.Deltas
             ExceptionAssert.ThrowsArgument(
                 () => delta.Patch(unrelatedEntity),
                 "original",
-                "Cannot use Delta of type 'Microsoft.AspNetCore.OData.Tests.Deltas.DeltaTest+Derived' on an entity of type 'Microsoft.AspNetCore.OData.Tests.Deltas.DeltaTest+AnotherDerived'.");
+                $"Cannot use Delta of type '{testNameSpace}.DeltaTest+Derived' on an entity of type '{testNameSpace}.DeltaTest+AnotherDerived'.");
         }
 
         [Fact]
@@ -766,7 +869,7 @@ namespace Microsoft.AspNetCore.OData.Tests.Deltas
             ExceptionAssert.ThrowsArgument(
                 () => delta.Put(unrelatedEntity),
                 "original",
-                "Cannot use Delta of type 'Microsoft.AspNetCore.OData.Tests.Deltas.DeltaTest+Derived' on an entity of type 'Microsoft.AspNetCore.OData.Tests.Deltas.DeltaTest+AnotherDerived'.");
+                $"Cannot use Delta of type '{testNameSpace}.DeltaTest+Derived' on an entity of type '{testNameSpace}.DeltaTest+AnotherDerived'.");
         }
 
         [Fact]
@@ -780,7 +883,7 @@ namespace Microsoft.AspNetCore.OData.Tests.Deltas
             ExceptionAssert.ThrowsArgument(
                 () => delta.CopyChangedValues(unrelatedEntity),
                 "original",
-                "Cannot use Delta of type 'Microsoft.AspNetCore.OData.Tests.Deltas.DeltaTest+Derived' on an entity of type 'Microsoft.AspNetCore.OData.Tests.Deltas.DeltaTest+AnotherDerived'.");
+                $"Cannot use Delta of type '{testNameSpace}.DeltaTest+Derived' on an entity of type '{testNameSpace}.DeltaTest+AnotherDerived'.");
         }
 
         [Fact]
@@ -794,7 +897,7 @@ namespace Microsoft.AspNetCore.OData.Tests.Deltas
             ExceptionAssert.ThrowsArgument(
                 () => delta.CopyUnchangedValues(unrelatedEntity),
                 "original",
-                "Cannot use Delta of type 'Microsoft.AspNetCore.OData.Tests.Deltas.DeltaTest+Derived' on an entity of type 'Microsoft.AspNetCore.OData.Tests.Deltas.DeltaTest+AnotherDerived'.");
+                $"Cannot use Delta of type '{testNameSpace}.DeltaTest+Derived' on an entity of type '{testNameSpace}.DeltaTest+AnotherDerived'.");
         }
 
         public static TheoryDataSet<string, string, object> ODataFormatter_Can_Read_Delta_DataSet
@@ -1058,7 +1161,17 @@ namespace Microsoft.AspNetCore.OData.Tests.Deltas
 
             public override int GetHashCode()
             {
+#if NETCOREAPP3_1_OR_GREATER
                 return HashCode.Combine(ID, StreetAddress, City, State, ZipCode);
+#else
+                int hash = ID.GetHashCode();
+                hash ^= StreetAddress?.GetHashCode() ?? 0;
+                hash ^= City?.GetHashCode() ?? 0;
+                hash ^= State?.GetHashCode() ?? 0;
+                hash ^= ZipCode.GetHashCode();
+
+                return hash;
+#endif
             }
         }
 

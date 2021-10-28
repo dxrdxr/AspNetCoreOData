@@ -66,6 +66,15 @@ namespace Microsoft.AspNetCore.OData.E2E.Tests.EdmUntyped
             Assert.Equal("YouStreet", homeAddress.Street);
             Assert.Equal("YouCity", homeAddress.City);
 
+            Assert.True(delta.TryGetNestedPropertyValue("HomeAddress", out object nestedHomeAddressObj));
+            Delta<Address> deltaHomeAddress = Assert.IsType<Delta<Address>>(nestedHomeAddressObj);
+            Assert.True(deltaHomeAddress.TryGetPropertyValue("Street", out object streetObj));
+            string street = Assert.IsType<string>(streetObj);
+            Assert.Equal("YouStreet", street);
+            Assert.True(deltaHomeAddress.TryGetPropertyValue("City", out object cityObj));
+            string city = Assert.IsType<string>(cityObj);
+            Assert.Equal("YouCity", city);
+
             Assert.True(delta.TryGetPropertyValue("Addresses", out object addressesObj));
             Assert.Collection((IList<Address>)addressesObj,
                 e =>

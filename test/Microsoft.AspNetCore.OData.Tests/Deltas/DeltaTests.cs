@@ -239,15 +239,8 @@ namespace Microsoft.AspNetCore.OData.Tests.Deltas
             Assert.Equal("Address", ideltaCustomer.GetChangedPropertyNames().Single());
             Assert.Equal(3, ideltaCustomer.GetUnchangedPropertyNames().Count());
 
-            // read the nested property back using legacy API
-            Assert.True(ideltaCustomer.TryGetPropertyValue("Address", out dynamic deltaAddressEntity));
-            Assert.IsAssignableFrom<AddressEntity>(deltaAddressEntity);
-            AddressEntity addressEntity = deltaAddressEntity as AddressEntity;
-            Assert.Equal("23213 NE 15th Ct", addressEntity.StreetAddress);
-            Assert.Equal("Sammamish", addressEntity.City);
-
-            // read the nested property back using nested API
-            Assert.True(deltaCustomer.TryGetNestedPropertyValue("Address", out dynamic deltaNestedAddress));
+            // read the nested property back
+            Assert.True(ideltaCustomer.TryGetPropertyValue("Address", out dynamic deltaNestedAddress));
             Assert.IsAssignableFrom<IDelta>(deltaNestedAddress);
             IDelta ideltaNestedAddress = deltaNestedAddress as IDelta;
             Assert.Equal(3, ideltaNestedAddress.GetUnchangedPropertyNames().Count());
@@ -273,35 +266,6 @@ namespace Microsoft.AspNetCore.OData.Tests.Deltas
             Assert.IsAssignableFrom<AddressEntity>(nestedInstance);
             Assert.Equal("Sammamish", nestedInstance.City);
             Assert.Equal("23213 NE 15th Ct", nestedInstance.StreetAddress);
-        }
-
-        [Fact]
-        public void CannotGetChangedNestedDeltaPropertyNames()
-        {
-            dynamic deltaCustomer = new Delta<CustomerEntity>();
-            IDelta ideltaCustomer = deltaCustomer as IDelta;
-
-            AddressEntity address = new AddressEntity();
-
-            // modify
-            address.City = "Sammamish";
-            address.StreetAddress = "23213 NE 15th Ct";
-
-            // modify the nested property
-            ideltaCustomer.TrySetPropertyValue("Address", address);
-            Assert.Single(ideltaCustomer.GetChangedPropertyNames());
-            Assert.Equal("Address", ideltaCustomer.GetChangedPropertyNames().Single());
-            Assert.Equal(3, ideltaCustomer.GetUnchangedPropertyNames().Count());
-
-            // read the not nested property back using legacy API
-            Assert.True(ideltaCustomer.TryGetPropertyValue("Address", out dynamic deltaAddressEntity));
-            Assert.IsAssignableFrom<AddressEntity>(deltaAddressEntity);
-            AddressEntity addressEntity = deltaAddressEntity as AddressEntity;
-            Assert.Equal("23213 NE 15th Ct", addressEntity.StreetAddress);
-            Assert.Equal("Sammamish", addressEntity.City);
-
-            // read the not nested property back using nested API
-            Assert.False(deltaCustomer.TryGetNestedPropertyValue("Address", out dynamic deltaNestedAddress));
         }
 
         [Fact]
@@ -855,7 +819,7 @@ namespace Microsoft.AspNetCore.OData.Tests.Deltas
             ExceptionAssert.ThrowsArgument(
                 () => delta.Patch(unrelatedEntity),
                 "original",
-                $"Cannot use Delta of type '{testNameSpace}.DeltaTest+Derived' on an entity of type '{testNameSpace}.DeltaTest+AnotherDerived'.");
+                "Cannot use Delta of type 'Microsoft.AspNetCore.OData.Tests.Deltas.DeltaTest+Derived' on an entity of type 'Microsoft.AspNetCore.OData.Tests.Deltas.DeltaTest+AnotherDerived'.");
         }
 
         [Fact]

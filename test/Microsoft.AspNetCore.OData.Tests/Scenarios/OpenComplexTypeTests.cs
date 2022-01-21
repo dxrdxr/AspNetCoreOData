@@ -563,10 +563,11 @@ namespace Microsoft.AspNetCore.OData.Tests.Scenarios
                     object lineAValue;
                     // Fetch LineA property using TryGetPropertyValue
                     Assert.True(address.TryGetPropertyValue("LineA", out lineAValue));
-                    LineDetails lineA = lineAValue as LineDetails;
-                    Assert.NotNull(lineA);
+                    Delta<LineDetails> deltaLineA = lineAValue as Delta<LineDetails>;
+                    Assert.NotNull(deltaLineA);
 
                     // Nested complex property
+                    dynamic lineA = lineAValue;
                     Assert.NotNull(lineA.PhoneInfo);
                     Assert.Equal(7654321, lineA.PhoneInfo.PhoneNumber);
 

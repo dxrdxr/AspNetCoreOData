@@ -184,13 +184,7 @@ namespace Microsoft.AspNetCore.OData.Deltas
                 Contract.Assert(deltaNestedResource != null, "deltaNestedResource != null");
                 Contract.Assert(DeltaHelper.IsDeltaOfT(deltaNestedResource.GetType()));
 
-                // Get the Delta<{NestedResourceType}>._instance using Reflection.
-                // This semantic is not correct but is preserved for backwards
-                // compatability and should be replaced in the next major release by
-                // the code in TryGetNestedPropertyValue.
-                FieldInfo field = deltaNestedResource.GetType().GetField("_instance", BindingFlags.NonPublic | BindingFlags.Instance);
-                Contract.Assert(field != null, "field != null");
-                value = field.GetValue(deltaNestedResource);
+                value = deltaNestedResource;
                 return true;
             }
             else
